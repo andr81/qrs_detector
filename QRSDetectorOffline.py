@@ -331,13 +331,13 @@ class QRSDetectorOffline(object):
 
         def get_local_max_ind(arr, center, win_size):
             # the maximum point in the window
-            win = arr[center - win_size: center + win_size]
+            win = arr[max(0, center - win_size): center + win_size]
             mx = np.argmax(win)
             return mx + center - win_size
 
         def get_local_min_ind(arr, center, win_size):
             # the minimum point in the window
-            win = arr[center - win_size: center + win_size]
+            win = arr[max(0, center - win_size): center + win_size]
             mx = np.argmin(win)
             return mx + center - win_size
 
@@ -353,7 +353,17 @@ class QRSDetectorOffline(object):
             self.s_point_indices = np.append(self.s_point_indices, s_ind)
 
 
+import pyedflib 
 
 if __name__ == "__main__":
-    qrs_detector = QRSDetectorOffline(ecg_data_path="ecg_data/ecg_data_1.csv", verbose=True,
-                                      log_data=True, plot_data=True, show_plot=False)
+    # qrs_detector = QRSDetectorOffline(ecg_data_path="ecg_data/ecg_data_1.csv", verbose=True,
+    #                                   log_data=True, plot_data=False, show_plot=False)
+
+    f = pyedflib.EdfReader('/Users/vita/Downloads/biathlon_ecg/2018-06-20_12.28.48_w1 posle nagr_2018.edf')
+    sig = f.readSignal(0)[:10000]
+    # f.close()
+    ecg_data_raw = np.array([[0,i] for i in sig])
+    qrs_detector = QRSDetectorOffline(ecg_data_path="", verbose=True,
+                                  log_data=True, plot_data=True, 
+                                  show_plot=True,
+                                  ecg_data_raw=ecg_data_raw, bps = 1000, findpeaks_limit=0.001, show_rs_points=True)
