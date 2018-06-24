@@ -57,14 +57,14 @@ class QRSDetectorOnline(object):
     SOFTWARE.
     """
 
-    def __init__(self, port, baud_rate):
+    def __init__(self, port, baud_rate, bps=250):
         """
         QRSDetector class initialisation method.
         :param str port: port to which ECG device is connected
         :param str baud_rate: baud rate of data received from ECG device
         """
         # Configuration parameters.
-        self.signal_frequency = 250  # Set ECG device frequency in samples per second here.
+        self.signal_frequency = int(bps)  # Set ECG device frequency in samples per second here.
 
         self.number_of_samples_stored = 200  # Change proportionally when adjusting frequency (in samples).
         self.possible_measurement_upper_limit = 10  # ECG device physiologically upper measurement limit.
@@ -73,13 +73,13 @@ class QRSDetectorOnline(object):
         self.filter_highcut = 15.0
         self.filter_order = 1
 
-        self.integration_window = 15  # Change proportionally when adjusting frequency (in samples).
+        self.integration_window = int(15 * (bps / 250))  # Change proportionally when adjusting frequency (in samples).
 
         self.findpeaks_limit = 0.35
-        self.findpeaks_spacing = 50  # Change proportionally when adjusting frequency (in samples).
+        self.findpeaks_spacing = int(50 * (bps / 250))  # Change proportionally when adjusting frequency (in samples).
         self.detection_window = 40  # Change proportionally when adjusting frequency (in samples).
 
-        self.refractory_period = 120  # Change proportionally when adjusting frequency (in samples).
+        self.refractory_period = int(120 * (bps / 250))  # Change proportionally when adjusting frequency (in samples).
         self.qrs_peak_filtering_factor = 0.125
         self.noise_peak_filtering_factor = 0.125
         self.qrs_noise_diff_weight = 0.25

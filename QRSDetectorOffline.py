@@ -58,7 +58,8 @@ class QRSDetectorOffline(object):
     SOFTWARE.
     """
 
-    def __init__(self, ecg_data_path, verbose=True, log_data=False, plot_data=False, show_plot=False):
+    def __init__(self, ecg_data_path, verbose=True, log_data=False, plot_data=False, show_plot=False, 
+                ecg_data_raw=None, bps=250, findpeaks_limit=0.35, show_rs_points=False):
         """
         QRSDetectorOffline class initialisation method.
         :param string ecg_data_path: path to the ECG dataset
@@ -66,28 +67,32 @@ class QRSDetectorOffline(object):
         :param bool log_data: flag for logging the results
         :param bool plot_data: flag for plotting the results to a file
         :param bool show_plot: flag for showing generated results plot - will not show anything if plot is not generated
+        :param array ecg_data_raw: raw ecg data, filename will be ignored
+        :param int bps: signal frequency, beats per secons
+        :param bool show_rs_points: flag for detect R/S points
         """
         # Configuration parameters.
         self.ecg_data_path = ecg_data_path
+        self.show_rs_points = show_rs_points
 
-        self.signal_frequency = 250  # Set ECG device frequency in samples per second here.
+        self.signal_frequency = int(bps)  # Set ECG device frequency in samples per second here.
 
-        self.filter_lowcut = 0.0
+        self.filter_lowcut = 0.1
         self.filter_highcut = 15.0
         self.filter_order = 1
 
-        self.integration_window = 15  # Change proportionally when adjusting frequency (in samples).
+        self.integration_window = int(15 * (bps / 250))  # Change proportionally when adjusting frequency (in samples).
 
-        self.findpeaks_limit = 0.35
-        self.findpeaks_spacing = 50  # Change proportionally when adjusting frequency (in samples).
+        self.findpeaks_limit = findpeaks_limit
+        self.findpeaks_spacing = int(50 * (bps / 250))  # Change proportionally when adjusting frequency (in samples).
 
-        self.refractory_period = 120  # Change proportionally when adjusting frequency (in samples).
+        self.refractory_period = int(120 * (bps / 250))  # Change proportionally when adjusting frequency (in samples).
         self.qrs_peak_filtering_factor = 0.125
         self.noise_peak_filtering_factor = 0.125
         self.qrs_noise_diff_weight = 0.25
 
         # Loaded ECG data.
-        self.ecg_data_raw = None
+        self.ecg_data_raw = ecg_data_raw
 
         # Measured and calculated values.
         self.filtered_ecg_measurements = None
@@ -104,14 +109,20 @@ class QRSDetectorOffline(object):
         # Detection results.
         self.qrs_peaks_indices = np.array([], dtype=int)
         self.noise_peaks_indices = np.array([], dtype=int)
+        
+        self.r_point_indices = np.array([], dtype=int)
+        self.s_point_indices = np.array([], dtype=int)
 
         # Final ECG data and QRS detection results array - samples with detected QRS are marked with 1 value.
         self.ecg_data_detected = None
 
         # Run whole detector flow.
-        self.load_ecg_data()
+        if ecg_data_raw is None:
+            self.load_ecg_data()
         self.detect_peaks()
         self.detect_qrs()
+        if show_rs_points:
+            self.detect_rs_points()
 
         if verbose:
             self.print_detection_data()
@@ -234,8 +245,8 @@ class QRSDetectorOffline(object):
             axis.grid(which='both', axis='both', linestyle='--')
             axis.plot(data, color="salmon", zorder=1)
 
-        def plot_points(axis, values, indices):
-            axis.scatter(x=indices, y=values[indices], c="black", s=50, zorder=2)
+        def plot_points(axis, values, indices, c="black"):
+            axis.scatter(x=indices, y=values[indices], c=c, s=50, zorder=2)
 
         plt.close('all')
         fig, axarr = plt.subplots(6, sharex=True, figsize=(15, 18))
@@ -247,7 +258,12 @@ class QRSDetectorOffline(object):
         plot_data(axis=axarr[4], data=self.integrated_ecg_measurements, title='Integrated ECG measurements with QRS peaks marked (black)')
         plot_points(axis=axarr[4], values=self.integrated_ecg_measurements, indices=self.qrs_peaks_indices)
         plot_data(axis=axarr[5], data=self.ecg_data_detected[:, 1], title='Raw ECG measurements with QRS peaks marked (black)')
-        plot_points(axis=axarr[5], values=self.ecg_data_detected[:, 1], indices=self.qrs_peaks_indices)
+
+        if self.show_rs_points:
+            plot_points(axis=axarr[5], values=self.ecg_data_detected[:, 1], indices=self.r_point_indices, c='red')
+            plot_points(axis=axarr[5], values=self.ecg_data_detected[:, 1], indices=self.s_point_indices, c='green')
+        else:
+            plot_points(axis=axarr[5], values=self.ecg_data_detected[:, 1], indices=self.qrs_peaks_indices)
 
         plt.tight_layout()
         fig.savefig(self.plot_path)
@@ -307,6 +323,35 @@ class QRSDetectorOffline(object):
         if limit is not None:
             ind = ind[data[ind] > limit]
         return ind
+
+    def detect_rs_points(self):
+        """
+        Detection of R/S points as a local maximum and minimum of a differentiated curve
+        """
+
+        def get_local_max_ind(arr, center, win_size):
+            # the maximum point in the window
+            win = arr[center - win_size: center + win_size]
+            mx = np.argmax(win)
+            return mx + center - win_size
+
+        def get_local_min_ind(arr, center, win_size):
+            # the minimum point in the window
+            win = arr[center - win_size: center + win_size]
+            mx = np.argmin(win)
+            return mx + center - win_size
+
+        for peak_ind in self.qrs_peaks_indices:
+            # max/min from diff
+            r_ind = get_local_max_ind(self.differentiated_ecg_measurements, peak_ind, self.findpeaks_spacing)
+            s_ind = get_local_min_ind(self.differentiated_ecg_measurements, peak_ind, self.findpeaks_spacing)
+            # clarify by raw data
+            r_ind = get_local_max_ind(self.ecg_data_raw[:,1], r_ind, int(self.findpeaks_spacing/10))
+            s_ind = get_local_min_ind(self.ecg_data_raw[:,1], s_ind, int(self.findpeaks_spacing/10))
+
+            self.r_point_indices = np.append(self.r_point_indices, r_ind)
+            self.s_point_indices = np.append(self.s_point_indices, s_ind)
+
 
 
 if __name__ == "__main__":
