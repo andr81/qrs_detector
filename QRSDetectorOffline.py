@@ -331,15 +331,17 @@ class QRSDetectorOffline(object):
 
         def get_local_max_ind(arr, center, win_size):
             # the maximum point in the window
-            win = arr[max(0, center - win_size): center + win_size]
+            win_start = max(0, center - win_size)
+            win = arr[win_start: center + win_size]
             mx = np.argmax(win)
-            return mx + center - win_size
+            return mx + win_start
 
         def get_local_min_ind(arr, center, win_size):
             # the minimum point in the window
-            win = arr[max(0, center - win_size): center + win_size]
+            win_start = max(0, center - win_size)
+            win = arr[win_start: center + win_size]
             mx = np.argmin(win)
-            return mx + center - win_size
+            return mx + win_start
 
         for peak_ind in self.qrs_peaks_indices:
             # max/min from diff
