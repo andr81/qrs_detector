@@ -403,17 +403,17 @@ class QRSDetectorOffline(object):
             rs_complex = RSComplex()
             # max/min from diff
             rs_complex.s_diff_index = get_local_min_ind(self.differentiated_ecg_measurements, 
-                                    peak_ind - self.findpeaks_spacing, peak_ind + self.findpeaks_spacing)
+                                    peak_ind - self.findpeaks_spacing * 2, peak_ind + self.findpeaks_spacing * 2)
             rs_complex.r_diff_index = get_local_max_ind(self.differentiated_ecg_measurements, 
-                                    peak_ind - self.findpeaks_spacing, peak_ind + self.findpeaks_spacing)
+                                    peak_ind - self.findpeaks_spacing * 2, peak_ind + self.findpeaks_spacing * 2)
             # max diff point at the left of S (to find real R-peak)
             r_ind = get_local_max_ind(self.differentiated_ecg_measurements, 
-                                    peak_ind - self.findpeaks_spacing, rs_complex.s_diff_index)
+                                    peak_ind - self.findpeaks_spacing * 2, rs_complex.s_diff_index)
             # clarify by raw data
             rs_complex.r_index = get_local_max_ind(self.ecg_data_raw[:,1], 
-                            r_ind - int(self.findpeaks_spacing/10), r_ind + int(self.findpeaks_spacing/10))
+                            r_ind - int(self.findpeaks_spacing/10), r_ind + int(self.findpeaks_spacing/5))
             rs_complex.s_index = get_local_min_ind(self.ecg_data_raw[:,1], 
-                            rs_complex.s_diff_index - int(self.findpeaks_spacing/10), rs_complex.s_diff_index + int(self.findpeaks_spacing/10))
+                            rs_complex.s_diff_index - int(self.findpeaks_spacing/5), rs_complex.s_diff_index + int(self.findpeaks_spacing/5))
 
             self.rs_complexes = np.append(self.rs_complexes, rs_complex)
 
