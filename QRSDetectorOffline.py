@@ -7,6 +7,15 @@ from scipy.signal import butter, lfilter
 LOG_DIR = "logs/"
 PLOT_DIR = "plots/"
 
+class RSComplex(object):
+    r_index = None
+    s_index = None
+    r_diff_index = None
+    s_diff_index = None
+    r_amplitude = None
+    s_amplitude = None
+    r_diff_amplitude = None
+    s_diff_amplitude = None
 
 class QRSDetectorOffline(object):
     """
@@ -69,7 +78,7 @@ class QRSDetectorOffline(object):
         :param bool show_plot: flag for showing generated results plot - will not show anything if plot is not generated
         :param array ecg_data_raw: raw ecg data, filename will be ignored
         :param int bps: signal frequency, beats per secons
-        :param bool show_rs_points: flag for detect R/S points
+        :param bool show_rs_points: flag for detect and plot R/S points
         """
         # Configuration parameters.
         self.ecg_data_path = ecg_data_path
@@ -110,8 +119,12 @@ class QRSDetectorOffline(object):
         self.qrs_peaks_indices = np.array([], dtype=int)
         self.noise_peaks_indices = np.array([], dtype=int)
         
-        self.r_point_indices = np.array([], dtype=int)
-        self.s_point_indices = np.array([], dtype=int)
+        # R/S poins detection results
+        self.rs_complexes = np.array([], dtype=RSComplex)
+
+        # heart rate and variability
+        self.hrv = None
+        self.hr = None
 
         # Final ECG data and QRS detection results array - samples with detected QRS are marked with 1 value.
         self.ecg_data_detected = None
@@ -251,7 +264,9 @@ class QRSDetectorOffline(object):
         plt.close('all')
         fig, axarr = plt.subplots(6, sharex=True, figsize=(15, 18))
 
-        plot_data(axis=axarr[0], data=self.ecg_data_raw[:, 1], title='Raw ECG measurements')
+        data = self.ecg_data_detected[:, 1]
+
+        plot_data(axis=axarr[0], data=data, title='Raw ECG measurements')
         plot_data(axis=axarr[1], data=self.filtered_ecg_measurements, title='Filtered ECG measurements')
         plot_data(axis=axarr[2], data=self.differentiated_ecg_measurements, title='Differentiated ECG measurements')
         plot_data(axis=axarr[3], data=self.squared_ecg_measurements, title='Squared ECG measurements')
@@ -260,8 +275,33 @@ class QRSDetectorOffline(object):
         plot_data(axis=axarr[5], data=self.ecg_data_detected[:, 1], title='Raw ECG measurements with QRS peaks marked (black)')
 
         if self.show_rs_points:
-            plot_points(axis=axarr[5], values=self.ecg_data_detected[:, 1], indices=self.r_point_indices, c='red')
-            plot_points(axis=axarr[5], values=self.ecg_data_detected[:, 1], indices=self.s_point_indices, c='green')
+            # raw
+            r_point_indices = [rs.r_index for rs in self.rs_complexes]
+            s_point_indices = [rs.s_index for rs in self.rs_complexes]
+            r_amplitudes = [rs.r_amplitude for rs in self.rs_complexes]
+            s_amplitudes = [rs.s_amplitude for rs in self.rs_complexes]
+            plot_points(axis=axarr[5], values=data, indices=r_point_indices, c='red')
+            plot_points(axis=axarr[5], values=data, indices=s_point_indices, c='green')
+            axarr[5].vlines(x=r_point_indices, ymin=data[r_point_indices] - r_amplitudes, 
+                        ymax=data[r_point_indices], colors='red', zorder=2)
+            axarr[5].vlines(x=s_point_indices, ymin=data[s_point_indices], 
+                        ymax=data[s_point_indices] + s_amplitudes, colors='green', zorder=2)
+
+            # diff
+            r_diff_amplitudes = [rs.r_diff_amplitude for rs in self.rs_complexes]
+            s_diff_amplitudes = [rs.s_diff_amplitude for rs in self.rs_complexes]
+            r_diff_point_indices = [rs.r_diff_index for rs in self.rs_complexes]
+            s_diff_point_indices = [rs.s_diff_index for rs in self.rs_complexes]
+            plot_points(axis=axarr[2], values=self.differentiated_ecg_measurements, indices=r_diff_point_indices, c='red')
+            plot_points(axis=axarr[2], values=self.differentiated_ecg_measurements, indices=s_diff_point_indices, c='green')
+            axarr[2].vlines(x=r_diff_point_indices, 
+                        ymin=self.differentiated_ecg_measurements[r_diff_point_indices] - r_diff_amplitudes, 
+                        ymax=self.differentiated_ecg_measurements[r_diff_point_indices], 
+                        colors='red', zorder=2)
+            axarr[2].vlines(x=s_diff_point_indices, 
+                        ymin=self.differentiated_ecg_measurements[s_diff_point_indices], 
+                        ymax=self.differentiated_ecg_measurements[s_diff_point_indices] + s_diff_amplitudes, 
+                        colors='green', zorder=2)
         else:
             plot_points(axis=axarr[5], values=self.ecg_data_detected[:, 1], indices=self.qrs_peaks_indices)
 
@@ -329,43 +369,80 @@ class QRSDetectorOffline(object):
         Detection of R/S points as a local maximum and minimum of a differentiated curve
         """
 
-        def get_local_max_ind(arr, center, win_size):
+        def get_local_max_ind(arr, pos1, pos2):
             # the maximum point in the window
-            win_start = max(0, center - win_size)
-            win = arr[win_start: center + win_size]
+            win_start = max(0, pos1)
+            win = arr[win_start: pos2]
             mx = np.argmax(win)
             return mx + win_start
 
-        def get_local_min_ind(arr, center, win_size):
+        def get_local_min_ind(arr, pos1, pos2):
             # the minimum point in the window
-            win_start = max(0, center - win_size)
-            win = arr[win_start: center + win_size]
+            win_start = max(0, pos1)
+            win = arr[win_start: pos2]
             mx = np.argmin(win)
             return mx + win_start
 
+        def get_amplitudes(r_point, s_point, data, rr_mean):
+            # R/S/ peaks amplitudes
+            r_value = data[r_point]
+            s_value = data[s_point]
+            win_size = int(rr_mean / 4)
+            win_start = max(0, r_point - win_size)
+            win = data[win_start: r_point]
+            # median before R-peak as zero level
+            zero = np.median(win)
+            return max(0, r_value - zero), max(0, zero - s_value)
+
+        if self.qrs_peaks_indices.shape[0] < 4:
+            return
+
         for peak_ind in self.qrs_peaks_indices:
+            if peak_ind < self.findpeaks_spacing or peak_ind > self.ecg_data_raw.shape[0] -  self.findpeaks_spacing:
+                continue
+            rs_complex = RSComplex()
             # max/min from diff
-            r_ind = get_local_max_ind(self.differentiated_ecg_measurements, peak_ind, self.findpeaks_spacing)
-            s_ind = get_local_min_ind(self.differentiated_ecg_measurements, peak_ind, self.findpeaks_spacing)
+            rs_complex.s_diff_index = get_local_min_ind(self.differentiated_ecg_measurements, 
+                                    peak_ind - self.findpeaks_spacing, peak_ind + self.findpeaks_spacing)
+            rs_complex.r_diff_index = get_local_max_ind(self.differentiated_ecg_measurements, 
+                                    peak_ind - self.findpeaks_spacing, peak_ind + self.findpeaks_spacing)
+            # max diff point at the left of S (to find real R-peak)
+            r_ind = get_local_max_ind(self.differentiated_ecg_measurements, 
+                                    peak_ind - self.findpeaks_spacing, rs_complex.s_diff_index)
             # clarify by raw data
-            r_ind = get_local_max_ind(self.ecg_data_raw[:,1], r_ind, int(self.findpeaks_spacing/10))
-            s_ind = get_local_min_ind(self.ecg_data_raw[:,1], s_ind, int(self.findpeaks_spacing/10))
+            rs_complex.r_index = get_local_max_ind(self.ecg_data_raw[:,1], 
+                            r_ind - int(self.findpeaks_spacing/10), r_ind + int(self.findpeaks_spacing/10))
+            rs_complex.s_index = get_local_min_ind(self.ecg_data_raw[:,1], 
+                            rs_complex.s_diff_index - int(self.findpeaks_spacing/10), rs_complex.s_diff_index + int(self.findpeaks_spacing/10))
 
-            self.r_point_indices = np.append(self.r_point_indices, r_ind)
-            self.s_point_indices = np.append(self.s_point_indices, s_ind)
+            self.rs_complexes = np.append(self.rs_complexes, rs_complex)
 
+        # heart rate and variability
+        r_point_indices = [rs.r_index for rs in self.rs_complexes]
+        rr_intervals = [r_point_indices[i] - r_point_indices[i-1] 
+                        for i in range(1, len(r_point_indices))]
+        self.hrv = int(round(np.std(rr_intervals) * self.signal_frequency / 1000))
+        rr_mean = np.median(rr_intervals) * self.signal_frequency / 1000
+        self.hr = int(round(60 / rr_mean * 1000))
 
-import pyedflib 
+        # find zero level for every qrs-complex, calculate R/S-amplitudes
+        for rs_complex in self.rs_complexes:
+            rs_complex.r_amplitude, rs_complex.s_amplitude = get_amplitudes(rs_complex.r_index, rs_complex.s_index, 
+                                                    self.ecg_data_raw[:, 1], rr_mean)
+            rs_complex.r_diff_amplitude, rs_complex.s_diff_amplitude = get_amplitudes(rs_complex.r_diff_index, rs_complex.s_diff_index, 
+                                                    self.differentiated_ecg_measurements, rr_mean)
+
+# import pyedflib 
 
 if __name__ == "__main__":
-    # qrs_detector = QRSDetectorOffline(ecg_data_path="ecg_data/ecg_data_1.csv", verbose=True,
-    #                                   log_data=True, plot_data=False, show_plot=False)
+    qrs_detector = QRSDetectorOffline(ecg_data_path="ecg_data/ecg_data_1.csv", verbose=True,
+                                      log_data=True, plot_data=False, show_plot=False)
 
-    f = pyedflib.EdfReader('/Users/vita/Downloads/biathlon_ecg/2018-06-20_12.28.48_w1 posle nagr_2018.edf')
-    sig = f.readSignal(0)[:10000]
-    # f.close()
-    ecg_data_raw = np.array([[0,i] for i in sig])
-    qrs_detector = QRSDetectorOffline(ecg_data_path="", verbose=True,
-                                  log_data=True, plot_data=True, 
-                                  show_plot=True,
-                                  ecg_data_raw=ecg_data_raw, bps = 1000, findpeaks_limit=0.001, show_rs_points=True)
+    # f = pyedflib.EdfReader('/Users/vita/Downloads/Lip/2018-05-31_10.54.06.edf')
+    # sig = f.readSignal(f.getSignalLabels().index('ECG_V2'))[0:10000]
+    # f._close()
+    # ecg_data_raw = np.array([[0,i] for i in sig])
+    # qrs_detector = QRSDetectorOffline(ecg_data_path="", verbose=True,
+    #                               log_data=True, plot_data=True, 
+    #                               show_plot=True,
+    #                               ecg_data_raw=ecg_data_raw, bps = 1000, findpeaks_limit=0.001, show_rs_points=True)
