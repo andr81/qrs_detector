@@ -123,7 +123,7 @@ class QRSDetectorOffline(object):
         self.rs_complexes = np.array([], dtype=RSComplex)
 
         # heart rate and variability
-        self.hrv = None
+        self.sdnn = None
         self.hr = None
 
         # Final ECG data and QRS detection results array - samples with detected QRS are marked with 1 value.
@@ -409,7 +409,8 @@ class QRSDetectorOffline(object):
                                         peak_ind - self.findpeaks_spacing * 2, peak_ind + self.findpeaks_spacing * 2)
                 # max diff point at the left of S (to find real R-peak)
                 r_ind = get_local_max_ind(self.differentiated_ecg_measurements, 
-                                        peak_ind - self.findpeaks_spacing * 2, rs_complex.s_diff_index)
+                                        peak_ind - self.findpeaks_spacing * 2, 
+                                        rs_complex.s_diff_index + self.findpeaks_spacing)
                 # clarify by raw data
                 rs_complex.r_index = get_local_max_ind(self.ecg_data_raw[:,1], 
                                 r_ind - int(self.findpeaks_spacing/10), r_ind + int(self.findpeaks_spacing/5))
@@ -424,9 +425,9 @@ class QRSDetectorOffline(object):
         r_point_indices = [rs.r_index for rs in self.rs_complexes]
         rr_intervals = [r_point_indices[i] - r_point_indices[i-1] 
                         for i in range(1, len(r_point_indices))]
-        self.hrv = int(round(np.std(rr_intervals) * self.signal_frequency / 1000))
-        rr_mean = np.median(rr_intervals) * self.signal_frequency / 1000
-        self.hr = int(round(60 / rr_mean * 1000))
+        self.sdnn = np.std(rr_intervals) / self.signal_frequency * 1000 #ms
+        rr_mean = np.median(rr_intervals) / self.signal_frequency * 1000 #ms
+        self.hr = int(round(60 / rr_mean * 1000)) #bpm
 
         # find zero level for every qrs-complex, calculate R/S-amplitudes
         for rs_complex in self.rs_complexes:
