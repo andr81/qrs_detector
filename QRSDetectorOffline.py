@@ -413,7 +413,7 @@ class QRSDetectorOffline(object):
                                         rs_complex.s_diff_index + self.findpeaks_spacing)
                 # clarify by raw data
                 rs_complex.r_index = get_local_max_ind(self.ecg_data_raw[:,1], 
-                                r_ind - int(self.findpeaks_spacing/10), r_ind + int(self.findpeaks_spacing/5))
+                                r_ind - int(self.findpeaks_spacing/5), r_ind + int(self.findpeaks_spacing/5))
                 rs_complex.s_index = get_local_min_ind(self.ecg_data_raw[:,1], 
                                 rs_complex.s_diff_index - int(self.findpeaks_spacing/5), rs_complex.s_diff_index + int(self.findpeaks_spacing/5))
 
