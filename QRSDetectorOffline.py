@@ -424,9 +424,10 @@ class QRSDetectorOffline(object):
         # heart rate and variability
         r_point_indices = [rs.r_index for rs in self.rs_complexes]
         rr_intervals = [r_point_indices[i] - r_point_indices[i-1] 
-                        for i in range(1, len(r_point_indices))]
+                        for i in range(1, len(r_point_indices))]        
+        rr_intervals = filter_std(rr_intervals, 3)        
         self.sdnn = np.std(rr_intervals) / self.signal_frequency * 1000 #ms
-        rr_mean = np.median(rr_intervals) / self.signal_frequency * 1000 #ms
+        rr_mean = np.mean(rr_intervals) / self.signal_frequency * 1000 #ms
         self.hr = int(round(60 / rr_mean * 1000)) #bpm
 
         # find zero level for every qrs-complex, calculate R/S-amplitudes
@@ -436,17 +437,19 @@ class QRSDetectorOffline(object):
             rs_complex.r_diff_amplitude, rs_complex.s_diff_amplitude = get_amplitudes(rs_complex.r_diff_index, rs_complex.s_diff_index, 
                                                     self.differentiated_ecg_measurements, rr_mean)
 
-# import pyedflib 
+
+def filter_std(arr, mul):
+    ''' filter list by std to remove noise '''
+    while True:
+        m1 = np.mean(arr) - np.std(arr) * mul
+        m2 = np.mean(arr) + np.std(arr) * mul
+        arr2 = np.sort(np.extract((arr > m1) & (arr < m2), arr))
+        if len(arr) > len(arr2):
+            arr = arr2
+        else: 
+            break
+    return arr2
 
 if __name__ == "__main__":
     qrs_detector = QRSDetectorOffline(ecg_data_path="ecg_data/ecg_data_1.csv", verbose=True,
                                       log_data=True, plot_data=False, show_plot=False)
-
-    # f = pyedflib.EdfReader('/Users/vita/Downloads/Lip/2018-05-31_10.54.06.edf')
-    # sig = f.readSignal(f.getSignalLabels().index('ECG_V2'))[0:10000]
-    # f._close()
-    # ecg_data_raw = np.array([[0,i] for i in sig])
-    # qrs_detector = QRSDetectorOffline(ecg_data_path="", verbose=True,
-    #                               log_data=True, plot_data=True, 
-    #                               show_plot=True,
-    #                               ecg_data_raw=ecg_data_raw, bps = 1000, findpeaks_limit=0.001, show_rs_points=True)

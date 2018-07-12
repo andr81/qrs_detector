@@ -71,5 +71,14 @@ class TestQRSDetector(unittest.TestCase):
                         9554, 9985, 10397, 10780, 11202, 11591, 11978, 12340, 12697, 13082, 13482, 13901, 14323]
         self.assert_peaks(expected_r, np.array([x.r_index for x in qrs_detector.rs_complexes]), 10)
 
+    def test_hrv(self):
+        signal = np.loadtxt('ecg_data/test_hrv_1.txt')
+        ecg_data_raw = np.array([[0,i] for i in signal[:]])
+        qrs_detector = QRSDetectorOffline(ecg_data_path="", verbose=False,
+                                        log_data=False, plot_data=False, show_plot=False,
+                                        ecg_data_raw=ecg_data_raw, bps=500, findpeaks_limit=0.001, show_rs_points=True)
+        self.assertEqualWithDelta(92, qrs_detector.hr, 1, "HR")
+        self.assertEqualWithDelta(55, qrs_detector.sdnn, 3, "SDNN")
+
 if __name__ == '__main__':
     unittest.main()
