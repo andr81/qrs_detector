@@ -68,7 +68,7 @@ class QRSDetectorOffline(object):
     """
 
     def __init__(self, ecg_data_path, verbose=True, log_data=False, plot_data=False, show_plot=False, 
-                ecg_data_raw=None, bps=250, findpeaks_limit=0.35, show_rs_points=False):
+                ecg_data_raw=None, bps=250, findpeaks_limit=0.35, show_rs_points=False, filter_highcut=15.0):
         """
         QRSDetectorOffline class initialisation method.
         :param string ecg_data_path: path to the ECG dataset
@@ -79,6 +79,7 @@ class QRSDetectorOffline(object):
         :param array ecg_data_raw: raw ecg data, filename will be ignored
         :param int bps: signal frequency, beats per secons
         :param bool show_rs_points: flag for detect and plot R/S points
+        :param float filter_highcut: hight value for band pass filter
         """
         # Configuration parameters.
         self.ecg_data_path = ecg_data_path
